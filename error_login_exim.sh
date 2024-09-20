@@ -26,11 +26,11 @@ output=""
 
 # Mostrar ayuda
 mostrar_ayuda() {
-    echo "Uso: $0 -i <IP> -d <dominio> [-l <logfile>] [-o <archivo_salida>]"
+    echo "Uso: $0 [-i <IP>] [-d <dominio>] [-l <logfile>] [-o <archivo_salida>]"
     echo
     echo "Opciones:"
-    echo "  -i    IP que se va a buscar"
-    echo "  -d    Dominio que se va a buscar"
+    echo "  -i    IP que se va a buscar (opcional)"
+    echo "  -d    Dominio que se va a buscar (opcional)"
     echo "  -l    Archivo de log de Exim (opcional, por defecto es /var/log/exim_mainlog)"
     echo "  -o    Archivo de salida para guardar los resultados (opcional)"
     echo "  -h    Mostrar esta ayuda"
@@ -49,19 +49,20 @@ while getopts "i:d:l:o:h" opt; do
     esac
 done
 
-# Verificar que se ingresaron los parámetros obligatorios
-if [[ -z "$ip" || -z "$dominio" ]]; then
-    echo "Error: Debes ingresar tanto una IP como un dominio."
+# Verificar que al menos uno de los dos (IP o dominio) se ingresó
+if [[ -z "$ip" && -z "$dominio" ]]; then
+    echo "Error: Debes ingresar al menos una IP o un dominio."
     mostrar_ayuda
 fi
 
-# Validar IP y dominio
-if ! validar_ip "$ip"; then
+# Validar IP si fue proporcionada
+if [[ -n "$ip" && ! $(validar_ip "$ip") ]]; then
     echo "Error: La IP '$ip' no es válida."
     exit 1
 fi
 
-if ! validar_dominio "$dominio"; then
+# Validar dominio si fue proporcionado
+if [[ -n "$dominio" && ! $(validar_dominio "$dominio") ]]; then
     echo "Error: El dominio '$dominio' no es válido."
     exit 1
 fi
@@ -72,20 +73,25 @@ if [ ! -f "$logfile" ]; then
     exit 1
 fi
 
-# Buscar errores de autenticación
-echo "Buscando fallos de autenticación para la IP $ip y el dominio $dominio en $logfile..."
+# Buscar errores de autenticación según lo que se haya proporcionado (IP, dominio o ambos)
+echo "Buscando fallos de autenticación..."
 
-# Construimos el comando de búsqueda
-resultado=$(grep 'authenticator failed' "$logfile" | grep "$ip" | egrep -o "[a-zA-Z0-9._%+-]+@$dominio")
+if [[ -n "$ip" && -n "$dominio" ]]; then
+    resultado=$(grep 'authenticator failed' "$logfile" | grep "$ip" | egrep -o "[a-zA-Z0-9._%+-]+@$dominio")
+elif [[ -n "$ip" ]]; then
+    resultado=$(grep 'authenticator failed' "$logfile" | grep "$ip")
+elif [[ -n "$dominio" ]]; then
+    resultado=$(grep 'authenticator failed' "$logfile" | egrep -o "[a-zA-Z0-9._%+-]+@$dominio")
+fi
 
 # Si hay resultados, mostrar o guardar en archivo
 if [ -n "$resultado" ]; then
-    if [ -n "$output" ]; then
+    if [ -n "$output" ];then
         echo "$resultado" > "$output"
         echo "Resultados guardados en $output."
     else
         echo "$resultado"
     fi
 else
-    echo "No se encontraron errores de autenticación para la IP $ip y el dominio $dominio."
+    echo "No se encontraron errores de autenticación."
 fi
