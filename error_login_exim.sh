@@ -56,15 +56,19 @@ if [[ -z "$ip" && -z "$dominio" ]]; then
 fi
 
 # Validar IP si fue proporcionada
-if [[ -n "$ip" && ! $(validar_ip "$ip") ]]; then
-    echo "Error: La IP '$ip' no es válida."
-    exit 1
+if [[ -n "$ip" ]]; then
+    if ! validar_ip "$ip"; then
+        echo "Error: La IP '$ip' no es válida."
+        exit 1
+    fi
 fi
 
 # Validar dominio si fue proporcionado
-if [[ -n "$dominio" && ! $(validar_dominio "$dominio") ]]; then
-    echo "Error: El dominio '$dominio' no es válido."
-    exit 1
+if [[ -n "$dominio" ]]; then
+    if ! validar_dominio "$dominio"; then
+        echo "Error: El dominio '$dominio' no es válido."
+        exit 1
+    fi
 fi
 
 # Verificar si el archivo de log existe
@@ -77,20 +81,44 @@ fi
 echo "Buscando fallos de autenticación..."
 
 if [[ -n "$ip" && -n "$dominio" ]]; then
-    resultado=$(grep 'authenticator failed' "$logfile" | grep "$ip" | egrep -o "[a-zA-Z0-9._%+-]+@$dominio")
+    resultado=$(grep 'authenticator failed' "$logfile" | grep "$ip" | grep "$dominio")
 elif [[ -n "$ip" ]]; then
     resultado=$(grep 'authenticator failed' "$logfile" | grep "$ip")
 elif [[ -n "$dominio" ]]; then
-    resultado=$(grep 'authenticator failed' "$logfile" | egrep -o "[a-zA-Z0-9._%+-]+@$dominio")
+    resultado=$(grep 'authenticator failed' "$logfile" | grep "$dominio")
 fi
 
-# Si hay resultados, mostrar o guardar en archivo
+# Si hay resultados, mostrar la fecha, hora, dirección IP y correo electrónico en formato más legible
 if [ -n "$resultado" ]; then
-    if [ -n "$output" ];then
-        echo "$resultado" > "$output"
+    echo "Se encontraron los siguientes intentos fallidos:"
+    echo "$resultado" | while read -r line; do
+        fecha=$(echo "$line" | awk '{print $1, $2, $3}')
+        ip=$(echo "$line" | grep -oP '\d+\.\d+\.\d+\.\d+')
+        correo=$(echo "$line" | grep -oP '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+        
+        # Formatear la salida en bloques más claros
+        echo "-----------------------------"
+        echo "Fecha:     $fecha"
+        echo "IP:        ${ip:-No encontrada}"
+        echo "Correo:    ${correo:-No encontrado}"
+        echo "-----------------------------"
+    done
+    
+    # Guardar en archivo si se especifica
+    if [ -n "$output" ]; then
+        echo "$resultado" | while read -r line; do
+            fecha=$(echo "$line" | awk '{print $1, $2, $3}')
+            ip=$(echo "$line" | grep -oP '\d+\.\d+\.\d+\.\d+')
+            correo=$(echo "$line" | grep -oP '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+            
+            # Guardar salida formateada en archivo
+            echo "-----------------------------" >> "$output"
+            echo "Fecha:     $fecha" >> "$output"
+            echo "IP:        ${ip:-No encontrada}" >> "$output"
+            echo "Correo:    ${correo:-No encontrado}" >> "$output"
+            echo "-----------------------------" >> "$output"
+        done
         echo "Resultados guardados en $output."
-    else
-        echo "$resultado"
     fi
 else
     echo "No se encontraron errores de autenticación."
