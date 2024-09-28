@@ -1,0 +1,59 @@
+- name: Verificar estado del servidor cPanel
+  hosts: cPanel
+  become: yes
+
+  tasks:
+    - name: Obtener información de uptime
+      command: uptime -p
+      register: uptime_info
+      changed_when: false
+
+    - name: Obtener carga de CPU
+      shell: |
+        load_avg=$(uptime | awk -F'load average:' '{ print $2 }' | awk '{ print $1 }' | sed 's/,//')
+        num_cpus=$(nproc)
+        echo "${load_avg}/${num_cpus}"
+      register: cpu_load
+      changed_when: false
+
+    - name: Obtener uso de Disco
+      shell: df -Th /home | awk 'NR==2 {print $4 "/" $3}'
+      register: disk_info
+      changed_when: false
+
+    - name: Obtener uso de memoria (RAM)
+      shell: free -h | awk '/^Mem/ {print $3 "/" $2}'
+      register: memory_usage
+      changed_when: false
+
+    - name: Obtener uso de memoria (SWAP)
+      shell: free -h | awk '/^Swap/ {print $3 "/" $2}'
+      register: swap_usage
+      changed_when: false
+
+    - name: Obtener estado de CSF
+      shell: "systemctl is-active csf &> /dev/null && echo '1' || echo '0'"
+      register: csf_status
+      changed_when: false
+
+    - name: Obtener estado de cPHulk
+      shell: whmapi1 cphulk_status | grep is_enabled | awk '{print $2}'
+      register: cphulk_status
+      changed_when: false
+
+    - name: Obtener cantidad de correos en cola (Exim)
+      command: "exim -bpc"
+      register: exim_queue
+      changed_when: false
+
+    - name: Imprimir reporte por server
+      debug:
+        msg:
+          carga_cpu: "{{ cpu_load.stdout }}"
+          uptime: "{{ uptime_info.stdout }}"
+          uso_disco: "{{ disk_info.stdout }}"
+          memoria_ram: "{{ memory_usage.stdout }}"
+          memoria_swap: "{{ swap_usage.stdout }}"
+          estado_csf: "{{ csf_status.stdout }}"
+          estado_cphulk: "{{ cphulk_status.stdout }}"
+          correos_en_cola: "{{ exim_queue.stdout }}"
